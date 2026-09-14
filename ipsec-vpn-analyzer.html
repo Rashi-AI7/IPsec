@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPsec Protocol Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0D1420;
+    --panel:#131C29;
+    --panel-raised:#17222F;
+    --line:#25313F;
+    --line-soft:#1C2733;
+    --text:#E7EDF3;
+    --text-dim:#8CA0B3;
+    --text-faint:#5A6B7C;
+    --brand:#8B7CF6;
+    --brand-dim:#4A4180;
+    --good:#45D6BE;
+    --good-dim:#173432;
+    --warn:#F2A65A;
+    --warn-dim:#3A2C18;
+    --bad:#F0665F;
+    --bad-dim:#3A1E1C;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans',sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.001ms !important; transition-duration:0.001ms !important;}
+  }
+
+  a{color:inherit;}
+  ::selection{background:var(--brand-dim);}
+  :focus-visible{outline:2px solid var(--brand); outline-offset:2px;}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 22px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, #101927, #0D1420);
+  }
+  .brand{
+    display:flex; align-items:center; gap:11px;
+  }
+  .brand-mark{
+    width:30px; height:30px; border-radius:7px;
+    background:conic-gradient(from 220deg, var(--brand), #5B4FD9, var(--brand));
+    display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:13px;
+    color:#0D1420;
+    flex-shrink:0;
+  }
+  .brand-text h1{
+    font-size:15px; margin:0; font-weight:600; letter-spacing:0.2px;
+  }
+  .brand-text p{
+    margin:1px 0 0; font-size:11.5px; color:var(--text-faint);
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .topbar-right{display:flex; align-items:center; gap:14px;}
+  .status-chip{
+    display:flex; align-items:center; gap:7px;
+    font-family:'IBM Plex Mono',monospace; font-size:11.5px;
+    color:var(--text-dim);
+    padding:6px 11px; border:1px solid var(--line); border-radius:20px;
+    background:var(--panel);
+  }
+  .status-dot{
+    width:7px; height:7px; border-radius:50%;
+    background:var(--text-faint);
+    transition:background .3s ease, box-shadow .3s ease;
+  }
+  .status-dot.busy{background:var(--warn); box-shadow:0 0 0 4px var(--warn-dim); animation:pulse 1s infinite;}
+  .status-dot.ready{background:var(--good); box-shadow:0 0 0 4px var(--good-dim);}
+  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.4;}}
+
+  /* ---------- layout ---------- */
+  .app{
+    display:grid;
+    grid-template-columns: 320px 1fr;
+    min-height:calc(100vh - 61px);
+  }
+  @media (max-width: 880px){
+    .app{grid-template-columns:1fr;}
+  }
+
+  /* ---------- sidebar ---------- */
+  .sidebar{
+    border-right:1px solid var(--line);
+    padding:20px 20px 28px;
+    background:var(--panel);
+  }
+  .field-group{margin-bottom:16px;}
+  .field-group label{
+    display:block; font-size:11px; color:var(--text-dim);
+    font-family:'IBM Plex Mono',monospace;
+    margin-bottom:6px; letter-spacing:0.2px;
+  }
+  select, input[type=range]{
+    width:100%;
+  }
+  select{
+    background:var(--panel-raised);
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:9px 10px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12.5px;
+    appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238CA0B3'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;
+    background-position:right 11px center;
+  }
+  select:hover{border-color:#37465A;}
+  .toggle-row{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:9px 10px;
+  }
+  .toggle-row span{font-size:12.5px; font-family:'IBM Plex Mono',monospace;}
+  .switch{
+    position:relative; width:34px; height:19px; flex-shrink:0;
+  }
+  .switch input{opacity:0; width:0; height:0;}
+  .slider-pill{
+    position:absolute; inset:0; background:#2B3846; border-radius:20px;
+    cursor:pointer; transition:.2s;
+  }
+  .slider-pill:before{
+    content:""; position:absolute; width:14px; height:14px; left:2.5px; top:2.5px;
+    background:var(--text-dim); border-radius:50%; transition:.2s;
+  }
+  .switch input:checked + .slider-pill{background:var(--good-dim); border:1px solid var(--good);}
+  .switch input:checked + .slider-pill:before{transform:translateX(15px); background:var(--good);}
+
+  .range-value{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text-faint);
+    margin-top:4px;
+  }
+  input[type=range]{
+    -webkit-appearance:none; height:3px; background:#2B3846; border-radius:2px; margin-top:8px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--brand); cursor:pointer; border:2px solid #0D1420;
+  }
+
+  .divider{height:1px; background:var(--line); margin:18px 0;}
+
+  .preset-select{margin-bottom:14px;}
+
+  .run-btn{
+    width:100%;
+    background:var(--brand);
+    color:#0D1420;
+    border:none;
+    border-radius:var(--radius);
+    padding:12px;
+    font-family:'IBM Plex Mono',monospace;
+    font-weight:600;
+    font-size:13px;
+    cursor:pointer;
+    letter-spacing:0.3px;
+    transition:background .15s ease, transform .05s ease;
+  }
+  .run-btn:hover{background:#9C8FFF;}
+  .run-btn:active{transform:scale(0.99);}
+  .run-btn:disabled{background:#3A3F52; color:var(--text-faint); cursor:progress;}
+
+  .sidebar-note{
+    margin-top:16px; font-size:11.5px; color:var(--text-faint); line-height:1.55;
+  }
+
+  /* ---------- main ---------- */
+  .main{padding:26px 30px 60px;}
+  .section-label{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text-faint);
+    letter-spacing:0.5px; margin:0 0 12px;
+  }
+
+  /* tunnel hero */
+  .tunnel-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:6px;
+    padding:26px 26px 20px; margin-bottom:22px;
+  }
+  .gateways{
+    display:flex; align-items:center; gap:14px;
+  }
+  .gw{
+    display:flex; flex-direction:column; align-items:center; gap:8px; flex-shrink:0; width:96px;
+  }
+  .gw-icon{
+    width:52px; height:52px; border-radius:8px;
+    border:1.5px solid var(--line);
+    background:var(--panel-raised);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .gw-icon svg{width:26px; height:26px;}
+  .gw-label{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--text-dim); text-align:center;}
+
+  .tunnel-track{
+    flex:1;
+    display:flex; flex-direction:column; gap:5px;
+  }
+  .tunnel-seg{
+    height:15px; border-radius:2px; background:#22303F;
+    display:flex; align-items:center; padding:0 8px;
+    font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:#0D1420; font-weight:600;
+    transition:background .5s ease, color .5s ease;
+    white-space:nowrap; overflow:hidden;
+  }
+  .tunnel-seg .seg-name{color:var(--text-faint); font-weight:400;}
+  .tunnel-seg.rated .seg-name{display:none;}
+
+  .tunnel-caption{
+    margin-top:16px; font-size:12px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace;
+  }
+
+  /* grid: score + dims + findings */
+  .grid{
+    display:grid; grid-template-columns: 260px 1fr; gap:22px;
+    align-items:start;
+  }
+  @media (max-width: 780px){ .grid{grid-template-columns:1fr;} }
+
+  .score-card, .dims-card, .findings-card, .summary-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:6px;
+    padding:22px;
+  }
+  .score-card{
+    display:flex; flex-direction:column; align-items:center; text-align:center;
+    grid-row: span 2;
+  }
+  .gauge-wrap{position:relative; width:168px; height:168px;}
+  .gauge-wrap svg{width:100%; height:100%; transform:rotate(-90deg);}
+  .gauge-num{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+  }
+  .gauge-num .big{font-family:'IBM Plex Mono',monospace; font-size:38px; font-weight:600;}
+  .gauge-num .lbl{font-size:10.5px; color:var(--text-faint); font-family:'IBM Plex Mono',monospace; margin-top:2px;}
+  .band-tag{
+    margin-top:14px; font-family:'IBM Plex Mono',monospace; font-size:11.5px;
+    padding:5px 12px; border-radius:20px; font-weight:600;
+  }
+
+  .dims-card h3, .findings-card h3, .summary-card h3{
+    margin:0 0 16px; font-size:13.5px; font-weight:600;
+  }
+  .dim-row{margin-bottom:13px;}
+  .dim-row:last-child{margin-bottom:0;}
+  .dim-top{display:flex; justify-content:space-between; margin-bottom:5px;}
+  .dim-top span:first-child{font-size:12px; color:var(--text-dim);}
+  .dim-top span:last-child{font-family:'IBM Plex Mono',monospace; font-size:11.5px;}
+  .dim-track{height:6px; background:#1C2733; border-radius:4px; overflow:hidden;}
+  .dim-fill{height:100%; border-radius:4px; width:0%; transition:width .7s cubic-bezier(.3,.8,.4,1);}
+
+  .findings-card{margin-top:22px;}
+  .finding{
+    display:flex; gap:12px;
+    padding:13px 0;
+    border-top:1px solid var(--line-soft);
+    opacity:0; transform:translateY(6px);
+    animation:rise .35s ease forwards;
+  }
+  .finding:first-child{border-top:none; padding-top:0;}
+  @keyframes rise{to{opacity:1; transform:translateY(0);}}
+  .sev-badge{
+    flex-shrink:0; width:74px; height:22px; border-radius:3px;
+    font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600;
+    display:flex; align-items:center; justify-content:center; letter-spacing:0.3px;
+  }
+  .finding-body h4{margin:0 0 4px; font-size:13px; font-weight:600;}
+  .finding-body p{margin:0; font-size:12.5px; color:var(--text-dim);}
+  .finding-body .fix{margin-top:6px; font-size:12px; color:var(--text-faint);}
+  .finding-body .fix b{color:var(--good); font-weight:600;}
+
+  .summary-card{margin-top:22px;}
+  .summary-card p{font-size:13px; color:var(--text-dim); margin:0 0 14px; line-height:1.65;}
+  .summary-card p:last-child{margin-bottom:0;}
+  .report-btn{
+    background:transparent; border:1px solid var(--line); color:var(--text-dim);
+    font-family:'IBM Plex Mono',monospace; font-size:11.5px; padding:8px 14px;
+    border-radius:var(--radius); cursor:pointer; transition:border-color .15s, color .15s;
+  }
+  .report-btn:hover{border-color:var(--brand); color:var(--text);}
+
+  .empty-state{
+    background:var(--panel); border:1px dashed var(--line); border-radius:6px;
+    padding:50px 24px; text-align:center; color:var(--text-faint);
+  }
+  .empty-state svg{width:34px; height:34px; margin-bottom:12px; opacity:.5;}
+  .empty-state p{margin:0; font-size:13px;}
+
+  pre.report{
+    background:var(--panel-raised); border:1px solid var(--line); border-radius:4px;
+    padding:16px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--text-dim);
+    white-space:pre-wrap; margin-top:14px; display:none; line-height:1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">IP</div>
+    <div class="brand-text">
+      <h1>IPsec Protocol Analyzer</h1>
+      <p>SIH25160 &middot; NTRO &middot; AI-assisted security assessment</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="status-chip"><span class="status-dot ready" id="statusDot"></span><span id="statusText">READY</span></div>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="field-group preset-select">
+      <label>LOAD SAMPLE DEPLOYMENT</label>
+      <select id="preset">
+        <option value="">Custom configuration&hellip;</option>
+        <option value="legacy">Legacy enterprise VPN (2008-era)</option>
+        <option value="default">Vendor default (unreviewed)</option>
+        <option value="hardened">Hardened / Suite-B grade</option>
+      </select>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field-group">
+      <label>IKE VERSION</label>
+      <select id="ikeVersion">
+        <option value="v2">IKEv2</option>
+        <option value="v1">IKEv1</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label>ENCRYPTION ALGORITHM</label>
+      <select id="encryption">
+        <option value="des">DES (56-bit)</option>
+        <option value="3des">3DES (168-bit)</option>
+        <option value="aes128">AES-128-CBC</option>
+        <option value="aes256" selected>AES-256-CBC</option>
+        <option value="aes256gcm">AES-256-GCM</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label>HASH / PRF</label>
+      <select id="hash">
+        <option value="md5">MD5</option>
+        <option value="sha1">SHA-1</option>
+        <option value="sha256" selected>SHA-256</option>
+        <option value="sha384">SHA-384</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label>DIFFIE&ndash;HELLMAN GROUP</label>
+      <select id="dhGroup">
+        <option value="1">Group 1 (768-bit MODP)</option>
+        <option value="2">Group 2 (1024-bit MODP)</option>
+        <option value="5">Group 5 (1536-bit MODP)</option>
+        <option value="14" selected>Group 14 (2048-bit MODP)</option>
+        <option value="19">Group 19 (256-bit ECP)</option>
+        <option value="20">Group 20 (384-bit ECP)</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label>AUTHENTICATION METHOD</label>
+      <select id="authMethod">
+        <option value="psk" selected>Pre-Shared Key</option>
+        <option value="rsa">RSA Signature (X.509)</option>
+        <option value="ecdsa">ECDSA Signature</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label>OPERATIONAL MODE</label>
+      <select id="mode">
+        <option value="tunnel" selected>Tunnel mode</option>
+        <option value="transport">Transport mode</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label>PERFECT FORWARD SECRECY</label>
+      <div class="toggle-row">
+        <span id="pfsLabel">Enabled</span>
+        <label class="switch">
+          <input type="checkbox" id="pfs" checked>
+          <span class="slider-pill"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>SA LIFETIME</label>
+      <input type="range" id="lifetime" min="900" max="86400" step="900" value="3600">
+      <div class="range-value"><span id="lifetimeVal">1 hour</span><span>max 24h</span></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <button class="run-btn" id="runBtn">Run assessment</button>
+    <p class="sidebar-note">Scoring is derived from RFC 8221/8247 cipher-suite guidance and known protocol weaknesses (Logjam, IKEv1 Aggressive Mode PSK exposure, weak-PRF collision risk). No packet data leaves this browser.</p>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <p class="section-label">TUNNEL &middot; NEGOTIATED PARAMETERS</p>
+    <div class="tunnel-card">
+      <div class="gateways">
+        <div class="gw">
+          <div class="gw-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8CA0B3" stroke-width="1.6"><rect x="3" y="7" width="18" height="12" rx="1.5"/><path d="M7 7V5a5 5 0 0 1 10 0v2"/></svg></div>
+          <div class="gw-label">GATEWAY A<br>203.0.113.4</div>
+        </div>
+        <div class="tunnel-track" id="tunnelTrack">
+          <div class="tunnel-seg" data-seg="conf" style="background:#22303F"><span class="seg-name">Confidentiality</span></div>
+          <div class="tunnel-seg" data-seg="integ" style="background:#22303F"><span class="seg-name">Integrity</span></div>
+          <div class="tunnel-seg" data-seg="ke" style="background:#22303F"><span class="seg-name">Key Exchange</span></div>
+          <div class="tunnel-seg" data-seg="auth" style="background:#22303F"><span class="seg-name">Authentication</span></div>
+        </div>
+        <div class="gw">
+          <div class="gw-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8CA0B3" stroke-width="1.6"><rect x="3" y="7" width="18" height="12" rx="1.5"/><path d="M7 7V5a5 5 0 0 1 10 0v2"/></svg></div>
+          <div class="gw-label">GATEWAY B<br>198.51.100.9</div>
+        </div>
+      </div>
+      <p class="tunnel-caption" id="tunnelCaption">Configure parameters on the left and run an assessment to visualize tunnel strength.</p>
+    </div>
+
+    <div id="results" style="display:none;">
+      <p class="section-label">RISK ASSESSMENT</p>
+      <div class="grid">
+        <div class="score-card">
+          <div class="gauge-wrap">
+            <svg viewBox="0 0 168 168">
+              <circle cx="84" cy="84" r="72" fill="none" stroke="#1C2733" stroke-width="12"/>
+              <circle id="gaugeArc" cx="84" cy="84" r="72" fill="none" stroke="#45D6BE" stroke-width="12" stroke-linecap="round" stroke-dasharray="452.4" stroke-dashoffset="452.4"/>
+            </svg>
+            <div class="gauge-num">
+              <span class="big" id="scoreNum">&mdash;</span>
+              <span class="lbl">RISK SCORE</span>
+            </div>
+          </div>
+          <div class="band-tag" id="bandTag">&mdash;</div>
+        </div>
+
+        <div class="dims-card">
+          <h3>Dimension breakdown</h3>
+          <div class="dim-row">
+            <div class="dim-top"><span>Confidentiality (cipher)</span><span id="dimConfVal">&mdash;</span></div>
+            <div class="dim-track"><div class="dim-fill" id="dimConf"></div></div>
+          </div>
+          <div class="dim-row">
+            <div class="dim-top"><span>Integrity (hash / PRF)</span><span id="dimIntegVal">&mdash;</span></div>
+            <div class="dim-track"><div class="dim-fill" id="dimInteg"></div></div>
+          </div>
+          <div class="dim-row">
+            <div class="dim-top"><span>Key exchange (DH group)</span><span id="dimKeVal">&mdash;</span></div>
+            <div class="dim-track"><div class="dim-fill" id="dimKe"></div></div>
+          </div>
+          <div class="dim-row">
+            <div class="dim-top"><span>Peer authentication</span><span id="dimAuthVal">&mdash;</span></div>
+            <div class="dim-track"><div class="dim-fill" id="dimAuth"></div></div>
+          </div>
+          <div class="dim-row">
+            <div class="dim-top"><span>Mode & session hygiene</span><span id="dimModeVal">&mdash;</span></div>
+            <div class="dim-track"><div class="dim-fill" id="dimMode"></div></div>
+          </div>
+        </div>
+
+        <div class="summary-card">
+          <h3>Assessment summary</h3>
+          <p id="summaryText"></p>
+          <button class="report-btn" id="reportBtn">Generate remediation report</button>
+          <pre class="report" id="reportBox"></pre>
+        </div>
+      </div>
+
+      <div class="findings-card">
+        <h3>Findings <span style="color:var(--text-faint); font-weight:400;" id="findingsCount"></span></h3>
+        <div id="findingsList"></div>
+      </div>
+    </div>
+
+    <div class="empty-state" id="emptyState">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#5A6B7C" stroke-width="1.4"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+      <p>No assessment run yet &mdash; select a sample deployment or set parameters, then run the assessment.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const SCORES = {
+  encryption: {des:8, '3des':38, aes128:72, aes256:85, aes256gcm:96},
+  hash: {md5:8, sha1:42, sha256:82, sha384:93},
+  dhGroup: {'1':4, '2':30, '5':52, '14':78, '19':90, '20':96},
+  authMethod: {psk:58, rsa:82, ecdsa:92},
+  mode: {tunnel:88, transport:62}
+};
+const LABELS = {
+  encryption:{des:'DES (56-bit)','3des':'3DES (168-bit)',aes128:'AES-128-CBC',aes256:'AES-256-CBC',aes256gcm:'AES-256-GCM'},
+  hash:{md5:'MD5',sha1:'SHA-1',sha256:'SHA-256',sha384:'SHA-384'},
+  dhGroup:{'1':'Group 1 (768-bit)','2':'Group 2 (1024-bit)','5':'Group 5 (1536-bit)','14':'Group 14 (2048-bit)','19':'Group 19 (ECP-256)','20':'Group 20 (ECP-384)'},
+  authMethod:{psk:'Pre-Shared Key',rsa:'RSA Signature',ecdsa:'ECDSA Signature'},
+  mode:{tunnel:'Tunnel mode',transport:'Transport mode'}
+};
+
+const PRESETS = {
+  legacy:{ikeVersion:'v1',encryption:'3des',hash:'md5',dhGroup:'2',authMethod:'psk',mode:'tunnel',pfs:false,lifetime:28800},
+  default:{ikeVersion:'v2',encryption:'aes128',hash:'sha1',dhGroup:'14',authMethod:'psk',mode:'tunnel',pfs:false,lifetime:86400},
+  hardened:{ikeVersion:'v2',encryption:'aes256gcm',hash:'sha384',dhGroup:'20',authMethod:'ecdsa',mode:'tunnel',pfs:true,lifetime:3600}
+};
+
+const els = {
+  preset: document.getElementById('preset'),
+  ikeVersion: document.getElementById('ikeVersion'),
+  encryption: document.getElementById('encryption'),
+  hash: document.getElementById('hash'),
+  dhGroup: document.getElementById('dhGroup'),
+  authMethod: document.getElementById('authMethod'),
+  mode: document.getElementById('mode'),
+  pfs: document.getElementById('pfs'),
+  pfsLabel: document.getElementById('pfsLabel'),
+  lifetime: document.getElementById('lifetime'),
+  lifetimeVal: document.getElementById('lifetimeVal'),
+  runBtn: document.getElementById('runBtn'),
+  statusDot: document.getElementById('statusDot'),
+  statusText: document.getElementById('statusText'),
+  results: document.getElementById('results'),
+  emptyState: document.getElementById('emptyState'),
+  tunnelCaption: document.getElementById('tunnelCaption'),
+  reportBtn: document.getElementById('reportBtn'),
+  reportBox: document.getElementById('reportBox'),
+};
+
+function fmtLifetime(sec){
+  if(sec < 3600) return Math.round(sec/60)+' min';
+  const h = sec/3600;
+  return (h===1 ? '1 hour' : (h%1===0? h+' hours' : h.toFixed(1)+' hours'));
+}
+els.lifetime.addEventListener('input', ()=> els.lifetimeVal.textContent = fmtLifetime(+els.lifetime.value));
+els.pfs.addEventListener('change', ()=> els.pfsLabel.textContent = els.pfs.checked ? 'Enabled' : 'Disabled');
+
+els.preset.addEventListener('change', ()=>{
+  const p = PRESETS[els.preset.value];
+  if(!p) return;
+  els.ikeVersion.value = p.ikeVersion;
+  els.encryption.value = p.encryption;
+  els.hash.value = p.hash;
+  els.dhGroup.value = p.dhGroup;
+  els.authMethod.value = p.authMethod;
+  els.mode.value = p.mode;
+  els.pfs.checked = p.pfs;
+  els.pfsLabel.textContent = p.pfs ? 'Enabled' : 'Disabled';
+  els.lifetime.value = p.lifetime;
+  els.lifetimeVal.textContent = fmtLifetime(p.lifetime);
+});
+
+function band(score){
+  if(score < 41) return {name:'CRITICAL RISK', color:'#F0665F', bg:'#3A1E1C'};
+  if(score < 61) return {name:'HIGH RISK', color:'#F0665F', bg:'#3A1E1C'};
+  if(score < 76) return {name:'MODERATE RISK', color:'#F2A65A', bg:'#3A2C18'};
+  if(score < 91) return {name:'GOOD', color:'#45D6BE', bg:'#173432'};
+  return {name:'EXCELLENT', color:'#45D6BE', bg:'#173432'};
+}
+function dimColor(score){
+  if(score < 41) return '#F0665F';
+  if(score < 76) return '#F2A65A';
+  return '#45D6BE';
+}
+
+function computeAssessment(cfg){
+  const conf = SCORES.encryption[cfg.encryption];
+  const integ = SCORES.hash[cfg.hash];
+  const ke = SCORES.dhGroup[cfg.dhGroup];
+  const auth = SCORES.authMethod[cfg.authMethod];
+  let modeScore = SCORES.mode[cfg.mode];
+  if(cfg.pfs) modeScore = Math.min(100, modeScore + 8); else modeScore = Math.max(0, modeScore - 14);
+
+  let overall = conf*0.28 + integ*0.18 + ke*0.26 + auth*0.16 + modeScore*0.12;
+  if(cfg.ikeVersion === 'v1') overall -= 14; else overall += 4;
+  overall = Math.max(2, Math.min(99, Math.round(overall)));
+
+  const findings = [];
+  if(cfg.encryption === 'des' || cfg.encryption === '3des'){
+    findings.push({sev:'critical', title:'Deprecated encryption cipher in use',
+      detail:`${LABELS.encryption[cfg.encryption]} is computationally broken or trivially brute-forceable with modern hardware and no longer provides meaningful confidentiality.`,
+      fix:'Migrate to AES-256-GCM (RFC 8221 mandatory-to-implement suite).'});
+  } else if(cfg.encryption === 'aes128'){
+    findings.push({sev:'low', title:'AES-128 acceptable but not future-proof',
+      detail:'128-bit keys remain secure today but offer a smaller safety margin against future cryptanalytic advances than 256-bit variants.',
+      fix:'Prefer AES-256-GCM where hardware acceleration is available.'});
+  }
+  if(cfg.hash === 'md5' || cfg.hash === 'sha1'){
+    findings.push({sev: cfg.hash==='md5'?'critical':'high', title:`Weak integrity function: ${LABELS.hash[cfg.hash]}`,
+      detail:`${LABELS.hash[cfg.hash]} has known collision weaknesses and is deprecated for use as an IKE PRF / integrity check.`,
+      fix:'Move to SHA-256 or SHA-384 for both hashing and the pseudo-random function.'});
+  }
+  if(cfg.dhGroup === '1' || cfg.dhGroup === '2'){
+    findings.push({sev:'critical', title:'Key exchange vulnerable to precomputation attack',
+      detail:`${LABELS.dhGroup[cfg.dhGroup]} falls within the range demonstrated to be breakable by nation-state-level precomputation (Logjam-class attacks), exposing session keys.`,
+      fix:'Move to Group 14 (2048-bit MODP) at minimum, or an elliptic-curve group (19/20).'});
+  } else if(cfg.dhGroup === '5'){
+    findings.push({sev:'medium', title:'Key exchange group below current guidance',
+      detail:'1536-bit MODP is stronger than legacy groups but sits below current NIST/RFC 8247 recommendations for long-term protection.',
+      fix:'Upgrade to Group 14, 19, or 20.'});
+  }
+  if(cfg.authMethod === 'psk'){
+    const extra = cfg.ikeVersion === 'v1'
+      ? ' Combined with IKEv1, this is exposed to offline dictionary attacks against captured Aggressive Mode exchanges.'
+      : '';
+    findings.push({sev: cfg.ikeVersion==='v1' ? 'high':'medium', title:'Shared-secret authentication in use',
+      detail:'Pre-shared keys are only as strong as their entropy and are difficult to rotate at scale across many gateways.'+extra,
+      fix:'Adopt certificate-based authentication (RSA or ECDSA) with a managed PKI.'});
+  }
+  if(cfg.ikeVersion === 'v1'){
+    findings.push({sev:'high', title:'IKEv1 is deprecated',
+      detail:'IKEv1 lacks built-in DoS protection, has a more complex and error-prone negotiation model, and several implementations still default to weak Aggressive Mode exchanges.',
+      fix:'Migrate the tunnel to IKEv2, supported by all major VPN vendors since ~2010.'});
+  }
+  if(!cfg.pfs){
+    findings.push({sev:'medium', title:'Perfect Forward Secrecy disabled',
+      detail:'Without PFS, compromise of a long-term key can expose all past traffic recorded from this tunnel.',
+      fix:'Enable PFS on Phase 2 / Child SA negotiation.'});
+  }
+  if(cfg.mode === 'transport'){
+    findings.push({sev:'info', title:'Transport mode exposes original IP headers',
+      detail:'Transport mode only encrypts the payload, leaving source/destination addressing visible. Appropriate for host-to-host links, not gateway-to-gateway.',
+      fix:'Use Tunnel mode for site-to-site deployments.'});
+  }
+  if(cfg.lifetime > 28800){
+    findings.push({sev:'low', title:'Long Security Association lifetime',
+      detail:`A ${fmtLifetime(cfg.lifetime)} SA lifetime extends the window an attacker has to exploit a single compromised key before rekeying occurs.`,
+      fix:'Reduce lifetime to 1–8 hours depending on traffic sensitivity.'});
+  }
+  if(findings.length === 0 || findings.every(f=>f.sev==='info'||f.sev==='low')){
+    findings.push({sev:'info', title:'No high-severity issues detected',
+      detail:'This configuration aligns with current best-practice cipher-suite and key-exchange guidance.',
+      fix:'Continue periodic re-assessment as cryptographic guidance evolves.'});
+  }
+
+  const sevOrder = {critical:0, high:1, medium:2, low:3, info:4};
+  findings.sort((a,b)=> sevOrder[a.sev]-sevOrder[b.sev]);
+
+  return {overall, dims:{conf,integ,ke,auth,mode:modeScore}, findings};
+}
+
+function summaryFor(overall, cfg){
+  const b = band(overall).name;
+  if(b === 'CRITICAL RISK' || b === 'HIGH RISK'){
+    return `This deployment combines legacy cryptographic choices that fall well short of current guidance. An attacker positioned on the path, or one who records traffic today, has a realistic route to recovering session confidentiality. Treat remediation as time-sensitive rather than routine maintenance.`;
+  }
+  if(b === 'MODERATE RISK'){
+    return `The core cipher suite is broadly sound, but one or two parameters lag behind current recommendations. None of the individual gaps are immediately exploitable at scale, but together they reduce the safety margin this tunnel was designed to have.`;
+  }
+  return `This configuration follows current cipher-suite and key-exchange guidance across every negotiated parameter. Continue to re-run this assessment after vendor firmware updates, since default proposals occasionally regress toward broader compatibility at the cost of strength.`;
+}
+
+function readConfig(){
+  return {
+    ikeVersion: els.ikeVersion.value,
+    encryption: els.encryption.value,
+    hash: els.hash.value,
+    dhGroup: els.dhGroup.value,
+    authMethod: els.authMethod.value,
+    mode: els.mode.value,
+    pfs: els.pfs.checked,
+    lifetime: +els.lifetime.value
+  };
+}
+
+function renderTunnel(dims){
+  const map = {conf:dims.conf, integ:dims.integ, ke:dims.ke, auth:dims.auth};
+  document.querySelectorAll('.tunnel-seg').forEach(seg=>{
+    const key = seg.dataset.seg;
+    const v = map[key];
+    seg.style.background = dimColor(v);
+    seg.classList.add('rated');
+  });
+}
+
+function renderResults(cfg, res){
+  const b = band(res.overall);
+  document.getElementById('scoreNum').textContent = res.overall;
+  document.getElementById('bandTag').textContent = b.name;
+  document.getElementById('bandTag').style.color = b.color;
+  document.getElementById('bandTag').style.background = b.bg;
+
+  const circumference = 452.4;
+  const arc = document.getElementById('gaugeArc');
+  arc.style.stroke = b.color;
+  const offset = circumference - (res.overall/100)*circumference;
+  requestAnimationFrame(()=>{ arc.style.transition = 'stroke-dashoffset 0.9s cubic-bezier(.3,.8,.4,1), stroke 0.4s'; arc.style.strokeDashoffset = offset; });
+
+  const dimSetters = [
+    ['dimConf', res.dims.conf, LABELS.encryption[cfg.encryption]],
+    ['dimInteg', res.dims.integ, LABELS.hash[cfg.hash]],
+    ['dimKe', res.dims.ke, LABELS.dhGroup[cfg.dhGroup]],
+    ['dimAuth', res.dims.auth, LABELS.authMethod[cfg.authMethod]],
+    ['dimMode', res.dims.mode, LABELS.mode[cfg.mode] + (cfg.pfs? ' + PFS':' · no PFS')]
+  ];
+  dimSetters.forEach(([id, val, label])=>{
+    document.getElementById(id).style.background = dimColor(val);
+    requestAnimationFrame(()=>{ document.getElementById(id).style.width = val+'%'; });
+    document.getElementById(id+'Val').textContent = label;
+  });
+
+  const list = document.getElementById('findingsList');
+  list.innerHTML = '';
+  res.findings.forEach((f, i)=>{
+    const sevColors = {critical:['#F0665F','#3A1E1C'], high:['#F0665F','#3A1E1C'], medium:['#F2A65A','#3A2C18'], low:['#8CA0B3','#1C2733'], info:['#45D6BE','#173432']};
+    const [fg,bg] = sevColors[f.sev];
+    const el = document.createElement('div');
+    el.className = 'finding';
+    el.style.animationDelay = (i*0.06)+'s';
+    el.innerHTML = `
+      <div class="sev-badge" style="color:${fg}; background:${bg};">${f.sev.toUpperCase()}</div>
+      <div class="finding-body">
+        <h4>${f.title}</h4>
+        <p>${f.detail}</p>
+        <p class="fix"><b>Fix &rarr;</b> ${f.fix}</p>
+      </div>`;
+    list.appendChild(el);
+  });
+  document.getElementById('findingsCount').textContent = `(${res.findings.length})`;
+  document.getElementById('summaryText').textContent = summaryFor(res.overall, cfg);
+  document.getElementById('tunnelCaption').textContent = `IKE${cfg.ikeVersion.slice(1)} negotiated · ${LABELS.encryption[cfg.encryption]} · ${LABELS.hash[cfg.hash]} · ${LABELS.dhGroup[cfg.dhGroup]} · ${LABELS.authMethod[cfg.authMethod]} · ${LABELS.mode[cfg.mode]}`;
+
+  els.reportBox.style.display = 'none';
+  els.reportBox.textContent = '';
+}
+
+els.reportBtn.addEventListener('click', ()=>{
+  const cfg = readConfig();
+  const res = computeAssessment(cfg);
+  const lines = [];
+  lines.push('IPSEC SECURITY ASSESSMENT REPORT');
+  lines.push('Generated: ' + new Date().toISOString());
+  lines.push('Overall risk score: ' + res.overall + '/100  [' + band(res.overall).name + ']');
+  lines.push('');
+  lines.push('NEGOTIATED PARAMETERS');
+  lines.push('  IKE version:      IKEv' + cfg.ikeVersion.slice(1));
+  lines.push('  Encryption:       ' + LABELS.encryption[cfg.encryption]);
+  lines.push('  Hash / PRF:       ' + LABELS.hash[cfg.hash]);
+  lines.push('  DH group:         ' + LABELS.dhGroup[cfg.dhGroup]);
+  lines.push('  Authentication:   ' + LABELS.authMethod[cfg.authMethod]);
+  lines.push('  Mode:             ' + LABELS.mode[cfg.mode]);
+  lines.push('  PFS:              ' + (cfg.pfs ? 'Enabled' : 'Disabled'));
+  lines.push('  SA lifetime:      ' + fmtLifetime(cfg.lifetime));
+  lines.push('');
+  lines.push('FINDINGS (' + res.findings.length + ')');
+  res.findings.forEach((f,i)=>{
+    lines.push('  ' + (i+1) + '. [' + f.sev.toUpperCase() + '] ' + f.title);
+    lines.push('     ' + f.detail);
+    lines.push('     Fix: ' + f.fix);
+  });
+  els.reportBox.textContent = lines.join('\n');
+  els.reportBox.style.display = 'block';
+});
+
+els.runBtn.addEventListener('click', ()=>{
+  els.runBtn.disabled = true;
+  els.runBtn.textContent = 'Analyzing…';
+  els.statusDot.className = 'status-dot busy';
+  els.statusText.textContent = 'ANALYZING';
+
+  setTimeout(()=>{
+    const cfg = readConfig();
+    const res = computeAssessment(cfg);
+    document.getElementById('emptyState').style.display = 'none';
+    els.results.style.display = 'block';
+    renderTunnel(res.dims);
+    renderResults(cfg, res);
+
+    els.runBtn.disabled = false;
+    els.runBtn.textContent = 'Run assessment';
+    els.statusDot.className = 'status-dot ready';
+    els.statusText.textContent = 'COMPLETE';
+  }, 650);
+});
+</script>
+</body>
+</html>
